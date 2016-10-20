@@ -52,19 +52,6 @@ def find_unique_dt(dts, d_tag):
     return dt
 
 
-def get_link_map_l_name(fp, phdrs, lm):
-    fp.seek(ptr2off(phdrs, lm) + 8)
-    l_name_ptr, = struct.unpack('Q', fp.read(8))
-    l_name_off = ptr2off(phdrs, l_name_ptr)
-    return elf64.read_sz(fp, l_name_off, -1)
-
-
-def get_link_map_l_next(fp, phdrs, lm):
-    fp.seek(ptr2off(phdrs, lm) + 24)
-    next_link_map_ptr, = struct.unpack('Q', fp.read(8))
-    return next_link_map_ptr
-
-
 def navigate(fp, ptr):
     ptr_str = struct.pack('Q', ptr)
     ehdr = elf64.Elf64_Ehdr.read(fp)
@@ -75,9 +62,6 @@ def navigate(fp, ptr):
     def local_ptr2off(ptr):
         return ptr2off(phdrs, ptr)
 
-    fp.seek(ehdr.e_shoff)
-    shdrs = elf64.Elf64_Shdr.read_all(
-        fp, ehdr.e_shnum, ehdr.e_shentsize)
     phdr_notes = find_unique_phdr(phdrs, elf64.PT_NOTE)
     fp.seek(phdr_notes.p_offset)
     notes = elf64.Elf64_Note.read_all(fp, phdr_notes.p_filesz)

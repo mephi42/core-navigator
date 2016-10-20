@@ -43,19 +43,34 @@ def ptr2off(shdrs, ptr):
     raise Exception()
 
 
+def get_dynamic_phdr(phdrs):
+    dynamic_phdr, = [phdr
+                     for phdr in phdrs
+                     if phdr.p_type == elf64.PT_DYNAMIC]
+    return dynamic_phdr
+
+
 def navigate(fp, ptr):
     ptr_str = struct.pack('Q', ptr)
     ehdr = elf64.Elf64_Ehdr.read(fp)
     fp.seek(ehdr.e_shoff)
-    shdrs = elf64.Elf64_Shdr.read_all(fp)
+    shdrs = elf64.Elf64_Shdr.read_all(
+        fp, ehdr.e_shnum, ehdr.e_shentsize)
     strtab_shdr = get_strtab_shdr(shdrs)
     notes = read_notes(fp, shdrs)
     auxv_note = get_auxv_note(notes)
     fp.seek(auxv_note.descoff)
     auxvs = elf64.Elf64_Auxv.read_all(fp, auxv_note.descsz)
     ldso_ptr = get_ldso_base(auxvs)
-    fp.seek(ptr2off(shdrs, ldso_ptr))
+    ldso_offset = ptr2off(shdrs, ldso_ptr)
+    fp.seek(ldso_offset)
     ldso_ehdr = elf64.Elf64_Ehdr.read(fp)
+    fp.seek(ldso_offset + ldso_ehdr.e_phoff)
+    ldso_phdrs = elf64.Elf64_Phdr.read_all(
+        fp, ldso_ehdr.e_phnum, ldso_ehdr.e_phentsize)
+    ldso_dynamic_phdr = get_dynamic_phdr(ldso_phdrs)
+    fp.seek(ptr2off(shdrs, ldso_ptr + ldso_dynamic_phdr.p_vaddr))
+    ldso_dts = elf64.Elf64_Dyn.read_all(fp, ldso_dynamic_phdr.p_memsz)
     shdr_index = -1
     for shdr in shdrs:
         shdr_index += 1

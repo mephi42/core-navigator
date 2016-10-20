@@ -58,13 +58,13 @@ class Elf64_Shdr(object):
          ) = struct.unpack(Elf64_Shdr.FORMAT, s)
 
     @staticmethod
-    def read_all(fp):
-        sections = []
-        while True:
-            s = fp.read(Elf64_Shdr.SIZEOF)
-            if len(s) == 0:
-                return sections
-            sections.append(Elf64_Shdr(s))
+    def read_all(fp, count, size):
+        shdrs = []
+        i = 0
+        while i < count:
+            shdrs.append(Elf64_Shdr(fp.read(size)))
+            i += 1
+        return shdrs
 
     def read_sz(self, fp, offset):
         sz_start = self.sh_offset + offset
@@ -159,8 +159,105 @@ class Elf64_Auxv(object):
 
     @staticmethod
     def read_all(fp, length):
-        notes = []
-        end = fp.tell() + length
-        while fp.tell() < end:
-            notes.append(Elf64_Auxv(fp))
-        return notes
+        auxvs = []
+        pos = fp.tell()
+        end = pos + length
+        while pos + Elf64_Auxv.SIZEOF <= end:
+            auxv = Elf64_Auxv(fp)
+            pos += Elf64_Auxv.SIZEOF
+            if auxv.type == AT_NULL:
+                return auxvs
+            auxvs.append(auxv)
+        raise Exception()
+
+
+PT_NULL = 0
+PT_LOAD = 1
+PT_DYNAMIC = 2
+PT_INTERP = 3
+PT_NOTE = 4
+PT_SHLIB = 5
+PT_PHDR = 6
+PT_LOOS = 0x60000000
+PT_HIOS = 0x6FFFFFFF
+PT_LOPROC = 0x70000000
+PT_HIPROC = 0x7FFFFFFF
+
+
+class Elf64_Phdr(object):
+    FORMAT = 'IIQQQQQQ'
+    SIZEOF = struct.calcsize(FORMAT)
+
+    def __init__(self, s):
+        (self.p_type,
+         self.p_flags,
+         self.p_offset,
+         self.p_vaddr,
+         self.p_paddr,
+         self.p_filesz,
+         self.p_memsz,
+         self.p_align,
+         ) = struct.unpack(Elf64_Phdr.FORMAT, s)
+
+    @staticmethod
+    def read_all(fp, count, size):
+        phdrs = []
+        i = 0
+        while i < count:
+            phdrs.append(Elf64_Phdr(fp.read(size)))
+            i += 1
+        return phdrs
+
+
+DT_NULL = 0
+DT_NEEDED = 1
+DT_PLTRELSZ = 2
+DT_PLTGOT = 3
+DT_HASH = 4
+DT_STRTAB = 5
+DT_SYMTAB = 6
+DT_RELA = 7
+DT_RELASZ = 8
+DT_RELAENT = 9
+DT_STRSZ = 10
+DT_SYMENT = 11
+DT_INIT = 12
+DT_FINI = 13
+DT_SONAME = 14
+DT_RPATH = 15
+DT_SYMBOLIC = 16
+DT_REL = 17
+DT_RELSZ = 18
+DT_RELENT = 19
+DT_PLTREL = 20
+DT_DEBUG = 21
+DT_TEXTREL = 22
+DT_JMPREL = 23
+DT_BIND_NOW = 24
+DT_INIT_ARRAY = 25
+DT_FINI_ARRAY = 26
+DT_INIT_ARRAYSZ = 27
+DT_FINI_ARRAYSZ = 28
+
+
+class Elf64_Dyn(object):
+    FORMAT = 'QQ'
+    SIZEOF = struct.calcsize(FORMAT)
+
+    def __init__(self, s):
+        (self.d_tag,
+         self.d_val,
+         ) = struct.unpack(Elf64_Dyn.FORMAT, s)
+
+    @staticmethod
+    def read_all(fp, length):
+        dts = []
+        pos = fp.tell()
+        end = pos + length
+        while pos + Elf64_Dyn.SIZEOF <= end:
+            dt = Elf64_Dyn(fp.read(Elf64_Dyn.SIZEOF))
+            pos += Elf64_Dyn.SIZEOF
+            if dt.d_tag == DT_NULL:
+                return dts
+            dts.append(dt)
+        raise Exception()

@@ -1,5 +1,7 @@
 import struct
 
+import bindata
+
 
 # https://www.uclibc.org/docs/elf-64-gen.pdf
 # http://articles.manugarg.com/aboutelfauxiliaryvectors
@@ -41,14 +43,6 @@ SHT_DYNAMIC = 6
 SHT_NOTE = 7
 
 
-def read_sz(fp, sz_start, sz_end):
-    sz_end = fp.find('\0', sz_start, sz_end)
-    if sz_end == -1:
-        raise Exception()
-    fp.seek(sz_start)
-    return fp.read(sz_end - sz_start)
-
-
 class Elf64_Shdr(object):
     FORMAT = 'IIQQQQIIQQ'
     SIZEOF = struct.calcsize(FORMAT)
@@ -76,7 +70,7 @@ class Elf64_Shdr(object):
         return shdrs
 
     def read_name(self, fp, strtab_shdr):
-        return read_sz(
+        return bindata.read_sz(
             fp,
             strtab_shdr.sh_offset + self.sh_name,
             strtab_shdr.sh_offset + strtab_shdr.sh_size)
@@ -254,14 +248,51 @@ class Elf64_Dyn(object):
          ) = struct.unpack(Elf64_Dyn.FORMAT, s)
 
     @staticmethod
-    def read_all(fp, length):
+    def read_all(fp, length=None):
         dts = []
         pos = fp.tell()
-        end = pos + length
-        while pos + Elf64_Dyn.SIZEOF <= end:
+        if length is None:
+            end = None
+        else:
+            end = pos + length
+        while end is None or pos + Elf64_Dyn.SIZEOF <= end:
             dt = Elf64_Dyn(fp.read(Elf64_Dyn.SIZEOF))
             pos += Elf64_Dyn.SIZEOF
             if dt.d_tag == DT_NULL:
                 return dts
             dts.append(dt)
         raise Exception()
+
+
+STB_LOCAL = 0
+STB_GLOBAL = 1
+STB_WEAK = 2
+
+STT_NOTYPE = 0
+STT_OBJECT = 1
+STT_FUNC = 2
+STT_SECTION = 3
+STT_FILE = 4
+
+
+class Elf64_Sym(object):
+    FORMAT = 'IBBHQQ'
+    SIZEOF = struct.calcsize(FORMAT)
+
+    def __init__(self, s):
+        (self.st_name,
+         self.st_info,
+         self.st_other,
+         self.st_shndx,
+         self.st_value,
+         self.st_size,
+         ) = struct.unpack(Elf64_Sym.FORMAT, s)
+
+    @staticmethod
+    def read_all(fp, count, size):
+        syms = []
+        i = 0
+        while i < count:
+            syms.append(Elf64_Sym(fp.read(size)))
+            i += 1
+        return syms

@@ -3,7 +3,9 @@ import mmap
 import struct
 import sys
 
+import bindata
 import elf64
+import link64
 
 
 #
@@ -69,6 +71,10 @@ def navigate(fp, ptr):
     fp.seek(ehdr.e_phoff)
     phdrs = elf64.Elf64_Phdr.read_all(
         fp, ehdr.e_phnum, ehdr.e_phentsize)
+
+    def local_ptr2off(ptr):
+        return ptr2off(phdrs, ptr)
+
     fp.seek(ehdr.e_shoff)
     shdrs = elf64.Elf64_Shdr.read_all(
         fp, ehdr.e_shnum, ehdr.e_shentsize)
@@ -79,7 +85,7 @@ def navigate(fp, ptr):
     fp.seek(auxv_note.descoff)
     auxvs = elf64.Elf64_Auxv.read_all(fp, auxv_note.descsz)
     phdr_ptr = find_unique_auxv(auxvs, elf64.AT_PHDR)
-    fp.seek(ptr2off(phdrs, phdr_ptr))
+    fp.seek(local_ptr2off(phdr_ptr))
     main_phdrs = elf64.Elf64_Phdr.read_all(
         fp,
         find_unique_auxv(auxvs, elf64.AT_PHNUM),
@@ -88,14 +94,30 @@ def navigate(fp, ptr):
     if phdr_ptr != main_phdr_pt.p_vaddr:
         raise Exception()
     main_phdr_dynamic = find_unique_phdr(main_phdrs, elf64.PT_DYNAMIC)
-    fp.seek(ptr2off(phdrs, main_phdr_dynamic.p_vaddr))
+    fp.seek(local_ptr2off(main_phdr_dynamic.p_vaddr))
     main_dts = elf64.Elf64_Dyn.read_all(fp, main_phdr_dynamic.p_memsz)
     main_dt_debug = find_unique_dt(main_dts, elf64.DT_DEBUG)
-    fp.seek(ptr2off(phdrs, main_dt_debug.d_val + 8))
-    link_map_ptr, = struct.unpack('Q', fp.read(8))
-    while link_map_ptr != 0:
-        print 'file=%s' % get_link_map_l_name(fp, phdrs, link_map_ptr)
-        link_map_ptr = get_link_map_l_next(fp, phdrs, link_map_ptr)
+    fp.seek(local_ptr2off(main_dt_debug.d_val + 8))
+    lms = link64.link_map.read_all(fp, local_ptr2off)
+    for lm in lms:
+        lib_name = lm.read_name(fp, local_ptr2off)
+        print 'file=%s' % lib_name
+        if len(lib_name) == 0:
+            l_addr = lm.l_addr
+        else:
+            l_addr = 0
+        fp.seek(local_ptr2off(lm.l_ld))
+        lib_dts = elf64.Elf64_Dyn.read_all(fp)
+        lib_strtab = find_unique_dt(lib_dts, elf64.DT_STRTAB)
+        lib_strtab_off = local_ptr2off(l_addr + lib_strtab.d_val)
+        lib_symtab = find_unique_dt(lib_dts, elf64.DT_SYMTAB)
+        lib_symsize = find_unique_dt(lib_dts, elf64.DT_SYMENT).d_val
+        lib_symcount = (lib_strtab.d_val - lib_symtab.d_val) / lib_symsize
+        fp.seek(local_ptr2off(l_addr + lib_symtab.d_val))
+        syms = elf64.Elf64_Sym.read_all(fp, lib_symcount, lib_symsize)
+        for sym in syms:
+            sym_name_off = lib_strtab_off + sym.st_name
+            print '  symbol=%s' % bindata.read_sz(fp, sym_name_off, -1)
     for phdr in phdrs:
         pos = phdr.p_offset
         end = phdr.p_offset + phdr.p_memsz

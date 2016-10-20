@@ -34,6 +34,10 @@ SHT_NULL = 0
 SHT_PROGBITS = 1
 SHT_SYMTAB = 2
 SHT_STRTAB = 3
+SHT_RELA = 4
+SHT_HASH = 5
+SHT_DYNAMIC = 6
+SHT_NOTE = 7
 
 
 class Elf64_Shdr(object):
@@ -72,3 +76,39 @@ class Elf64_Shdr(object):
 
     def read_name(self, fp, strtab_shdr):
         return strtab_shdr.read_sz(fp, self.sh_name)
+
+
+def strip_nul(s):
+    end = s.find('\0')
+    if end == -1:
+        return s
+    else:
+        return s[:end]
+
+
+def pad4(n):
+    return ((n - 1) | 3) + 1
+
+
+class Elf64_Note(object):
+    FORMAT = 'III'
+    SIZEOF = struct.calcsize(FORMAT)
+
+    def __init__(self, fp):
+        (namesz,
+         self.descsz,
+         self.type
+         ) = struct.unpack(Elf64_Note.FORMAT,
+                           fp.read(Elf64_Note.SIZEOF))
+        nameoff = fp.tell()
+        self.name = strip_nul(fp.read(namesz))
+        self.descoff = pad4(nameoff + namesz)
+        note_end = pad4(self.descoff + self.descsz)
+        fp.seek(note_end)
+
+    @staticmethod
+    def read_all(fp, length):
+        notes = []
+        end = fp.tell() + length
+        while fp.tell() < end:
+            notes.append(Elf64_Note(fp))

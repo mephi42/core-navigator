@@ -6,14 +6,23 @@ import sys
 import elf64
 
 
+def get_strtab_shdr(shdrs):
+    strtab_shdr, = [shdr
+                    for shdr in shdrs
+                    if shdr.sh_type == elf64.SHT_STRTAB]
+    return strtab_shdr
+
+
 def navigate(fp, ptr):
     ptr_str = struct.pack('Q', ptr)
     ehdr = elf64.Elf64_Ehdr.read(fp)
     fp.seek(ehdr.e_shoff)
     shdrs = elf64.Elf64_Shdr.read_all(fp)
-    strtab_shdr, = [shdr
-                    for shdr in shdrs
-                    if shdr.sh_type == elf64.SHT_STRTAB]
+    strtab_shdr = get_strtab_shdr(shdrs)
+    for shdr in shdrs:
+        if shdr.sh_type == elf64.SHT_NOTE:
+            fp.seek(shdr.sh_offset)
+            notes = elf64.Elf64_Note.read_all(fp, shdr.sh_size)
     shdr_index = -1
     for shdr in shdrs:
         shdr_index += 1

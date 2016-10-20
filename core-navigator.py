@@ -137,11 +137,11 @@ def navigate(fp, ptr):
             while i < ptr_count:
                 needle = haystack[i]
                 if needle in vtables:
-                    print ('  @0x%.16x %s=0x%.16x offset=%d' %
-                           (addr - ptr_count * 8 + i * 8,
+                    print ('  @0x%.16x %s=0x%.16x field offset=%d' %
+                           (addr - (ptr_count - i) * 8,
                             vtables[needle],
                             needle,
-                            i * 8))
+                            (ptr_count - i) * 8))
                 i += 1
 
             pos += 1

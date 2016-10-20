@@ -2,6 +2,7 @@ import struct
 
 
 # https://www.uclibc.org/docs/elf-64-gen.pdf
+# http://articles.manugarg.com/aboutelfauxiliaryvectors
 
 
 class Elf64_Ehdr(object):
@@ -40,6 +41,14 @@ SHT_DYNAMIC = 6
 SHT_NOTE = 7
 
 
+def read_sz(fp, sz_start, sz_end):
+    sz_end = fp.find('\0', sz_start, sz_end)
+    if sz_end == -1:
+        raise Exception()
+    fp.seek(sz_start)
+    return fp.read(sz_end - sz_start)
+
+
 class Elf64_Shdr(object):
     FORMAT = 'IIQQQQIIQQ'
     SIZEOF = struct.calcsize(FORMAT)
@@ -66,16 +75,11 @@ class Elf64_Shdr(object):
             i += 1
         return shdrs
 
-    def read_sz(self, fp, offset):
-        sz_start = self.sh_offset + offset
-        sz_end = fp.find('\0', sz_start, self.sh_offset + self.sh_size)
-        if sz_end == -1:
-            raise Exception()
-        fp.seek(sz_start)
-        return fp.read(sz_end - sz_start)
-
     def read_name(self, fp, strtab_shdr):
-        return strtab_shdr.read_sz(fp, self.sh_name)
+        return read_sz(
+            fp,
+            strtab_shdr.sh_offset + self.sh_name,
+            strtab_shdr.sh_offset + strtab_shdr.sh_size)
 
 
 def strip_nul(s):

@@ -113,11 +113,12 @@ def navigate(fp, ptr):
             sym_name_off = lib_strtab_off + sym.st_name
             sym_name = bindata.read_sz(fp, sym_name_off, -1)
             if sym_name.startswith('_ZTV'):
-                st_value = lm.l_addr + sym.st_value
-                st_end = st_value + sym.st_size
-                while st_value < st_end:
-                    vtables[st_value] = sym_name
-                    st_value += 8
+                st_base = lm.l_addr + sym.st_value
+                st_offset = 0
+                while st_offset < sym.st_size:
+                    st_value = st_base + st_offset
+                    vtables[st_value] = '%s+0x%x' % (sym_name, st_offset)
+                    st_offset += 8
     for phdr in phdrs:
         pos = phdr.p_offset
         end = phdr.p_offset + phdr.p_memsz
@@ -126,13 +127,21 @@ def navigate(fp, ptr):
             if pos == -1:
                 break
             addr = phdr.p_vaddr + (pos - phdr.p_offset)
-            print 'offset=0x%x ptr=0x%x' % (pos, addr)
+            print '@0x%.16x file offset=0x%x' % (addr, pos)
 
-            fp.seek(pos - 128)
-            haystack = struct.unpack('QQQQQQQQQQQQQQQQ', fp.read(128))
-            for needle in haystack:
+            ptr_count = 16
+            fp.seek(pos - ptr_count * 8)
+            haystack = struct.unpack('Q' * ptr_count,
+                                     fp.read(ptr_count * 8))
+            i = 0
+            while i < ptr_count:
+                needle = haystack[i]
                 if needle in vtables:
-                    print '  %s' % vtables[needle]
+                    print ('  @0x%.16x %s=0x%.16x' %
+                           (addr - ptr_count * 8 + i * 8,
+                            vtables[needle],
+                            needle))
+                i += 1
 
             pos += 1
 

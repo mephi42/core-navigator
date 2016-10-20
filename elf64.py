@@ -10,6 +10,7 @@ import bindata
 class Elf64_Ehdr(object):
     FORMAT = '16sHHIQQQIHHHHHH'
     SIZEOF = struct.calcsize(FORMAT)
+    MAGIC = '\x7fELF'
 
     def __init__(self, s):
         (self.e_ident,
@@ -27,6 +28,8 @@ class Elf64_Ehdr(object):
          self.e_shnum,
          self.e_shstrndx,
          ) = struct.unpack(Elf64_Ehdr.FORMAT, s)
+        if self.e_ident[0:len(Elf64_Ehdr.MAGIC)] != Elf64_Ehdr.MAGIC:
+            raise Exception()
 
     @staticmethod
     def read(fp):
@@ -273,6 +276,9 @@ STT_OBJECT = 1
 STT_FUNC = 2
 STT_SECTION = 3
 STT_FILE = 4
+
+SHN_UNDEF = 0
+SHN_ABS = 0xFFF1
 
 
 class Elf64_Sym(object):

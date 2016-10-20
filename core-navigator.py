@@ -31,11 +31,16 @@ def find_unique_auxv(auxvs, type):
     return auxv.value
 
 
-def ptr2off(phdrs, ptr):
+def ptr2phdr(phdrs, ptr):
     for phdr in phdrs:
         if phdr.p_vaddr <= ptr < phdr.p_vaddr + phdr.p_memsz:
-            return ptr - phdr.p_vaddr + phdr.p_offset
+            return phdr
     raise Exception()
+
+
+def ptr2off(phdrs, ptr):
+    phdr = ptr2phdr(phdrs, ptr)
+    return ptr - phdr.p_vaddr + phdr.p_offset
 
 
 def find_unique_phdr(phdrs, p_type):
@@ -83,10 +88,10 @@ def navigate(fp, ptr):
     main_dt_debug = find_unique_dt(main_dts, elf64.DT_DEBUG)
     fp.seek(local_ptr2off(main_dt_debug.d_val + 8))
     lms = link64.link_map.read_all(fp, local_ptr2off)
+    vtables = {}
     for lm in lms:
         lib_name = lm.read_name(fp, local_ptr2off)
-        print 'file=%s' % lib_name
-        if len(lib_name) == 0:
+        if len(lib_name) == 0:  # WTF
             l_addr = lm.l_addr
         else:
             l_addr = 0
@@ -100,8 +105,19 @@ def navigate(fp, ptr):
         fp.seek(local_ptr2off(l_addr + lib_symtab.d_val))
         syms = elf64.Elf64_Sym.read_all(fp, lib_symcount, lib_symsize)
         for sym in syms:
+            if sym.st_shndx == elf64.SHN_UNDEF:
+                continue
+            stt = sym.st_info & 0xF
+            if stt != elf64.STT_OBJECT:
+                continue
             sym_name_off = lib_strtab_off + sym.st_name
-            print '  symbol=%s' % bindata.read_sz(fp, sym_name_off, -1)
+            sym_name = bindata.read_sz(fp, sym_name_off, -1)
+            if sym_name.startswith('_ZTV'):
+                st_value = lm.l_addr + sym.st_value
+                st_end = st_value + sym.st_size
+                while st_value < st_end:
+                    vtables[st_value] = sym_name
+                    st_value += 8
     for phdr in phdrs:
         pos = phdr.p_offset
         end = phdr.p_offset + phdr.p_memsz
@@ -111,6 +127,13 @@ def navigate(fp, ptr):
                 break
             addr = phdr.p_vaddr + (pos - phdr.p_offset)
             print 'offset=0x%x ptr=0x%x' % (pos, addr)
+
+            fp.seek(pos - 128)
+            haystack = struct.unpack('QQQQQQQQQQQQQQQQ', fp.read(128))
+            for needle in haystack:
+                if needle in vtables:
+                    print '  %s' % vtables[needle]
+
             pos += 1
 
 

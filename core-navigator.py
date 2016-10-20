@@ -13,16 +13,49 @@ def get_strtab_shdr(shdrs):
     return strtab_shdr
 
 
+def read_notes(fp, shdrs):
+    notes = []
+    for shdr in shdrs:
+        if shdr.sh_type == elf64.SHT_NOTE:
+            fp.seek(shdr.sh_offset)
+            notes.extend(elf64.Elf64_Note.read_all(fp, shdr.sh_size))
+    return notes
+
+
+def get_auxv_note(notes):
+    auxv_note, = [note
+                  for note in notes
+                  if note.name == "CORE" and note.type == elf64.NT_AUXV]
+    return auxv_note
+
+
+def get_ldso_base(auxvs):
+    base_auxv, = [auxv
+                  for auxv in auxvs
+                  if auxv.type == elf64.AT_BASE]
+    return base_auxv.value
+
+
+def ptr2off(shdrs, ptr):
+    for shdr in shdrs:
+        if shdr.sh_addr <= ptr < shdr.sh_addr + shdr.sh_size:
+            return ptr - shdr.sh_addr + shdr.sh_offset
+    raise Exception()
+
+
 def navigate(fp, ptr):
     ptr_str = struct.pack('Q', ptr)
     ehdr = elf64.Elf64_Ehdr.read(fp)
     fp.seek(ehdr.e_shoff)
     shdrs = elf64.Elf64_Shdr.read_all(fp)
     strtab_shdr = get_strtab_shdr(shdrs)
-    for shdr in shdrs:
-        if shdr.sh_type == elf64.SHT_NOTE:
-            fp.seek(shdr.sh_offset)
-            notes = elf64.Elf64_Note.read_all(fp, shdr.sh_size)
+    notes = read_notes(fp, shdrs)
+    auxv_note = get_auxv_note(notes)
+    fp.seek(auxv_note.descoff)
+    auxvs = elf64.Elf64_Auxv.read_all(fp, auxv_note.descsz)
+    ldso_ptr = get_ldso_base(auxvs)
+    fp.seek(ptr2off(shdrs, ldso_ptr))
+    ldso_ehdr = elf64.Elf64_Ehdr.read(fp)
     shdr_index = -1
     for shdr in shdrs:
         shdr_index += 1
